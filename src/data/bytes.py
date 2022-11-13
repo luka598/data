@@ -1,14 +1,11 @@
-from typing import Type, Union
+from typing import Type, Union, Any
 
 UNDEFINED = None
 PY_INT = int
-# del int
 int = UNDEFINED  # type: ignore
 PY_STR = str
-# del str
 str = UNDEFINED
 PY_BYTES = bytes
-# del bytes
 bytes = UNDEFINED
 
 
@@ -19,6 +16,11 @@ class Buffer:
     def read(self, n):
         v = self.buffer[:n]
         self.buffer = self.buffer[n:]
+        return v
+
+    def readAll(self):
+        v = self.buffer
+        self.buffer = self.buffer[0:0]
         return v
 
     def peek(self, n):
@@ -40,23 +42,27 @@ class Buffer:
 
 class DataType:
     @classmethod
-    def validateValue(cls, x):
+    def validateValue(cls, x) -> bool:
         raise NotImplementedError()
 
     @classmethod
-    def validateBytes(cls, x):
+    def validateBytes(cls, x) -> bool:
         raise NotImplementedError()
 
     @classmethod
-    def toBytes(cls, x):
+    def toBytes(cls, x) -> PY_BYTES:
         raise NotImplementedError()
 
     @classmethod
-    def fromBytes(cls, x):
+    def fromBytes(cls, x) -> Any:
+        raise NotImplementedError()
+
+    @staticmethod
+    def new() -> Type[Any]:
         raise NotImplementedError()
 
 
-class int(DataType):
+class Int(DataType):
     BITS: PY_INT = 0
     SIGNED: bool = False
 
@@ -102,16 +108,24 @@ class int(DataType):
         else:
             return 0
 
+    @staticmethod
+    def new(bits, signed):
+        class __Int(Int):
+            BITS = bits
+            SIGNED: bool = signed
 
-class uint8(int):
+        return __Int
+
+
+class uint8(Int):
     BITS = 8
 
 
-class uint16(int):
+class uint16(Int):
     BITS = 16
 
 
-class uint32(int):
+class uint32(Int):
     BITS = 32
 
 
@@ -139,6 +153,52 @@ class Sequence(DataType):
         length = cls.LENGTH_DT.fromBytes(x)
         return x.read(length)
 
+    @staticmethod
+    def new(length_dt):
+        class __Sequence(Sequence):
+            LENGTH_DT = length_dt
+
+        return __Sequence
+
+
+class Vector(DataType):
+    LENGTH_DT: Type[Int] = uint32
+    VALUE_DT: Type[DataType]
+
+    @classmethod
+    def validateValue(cls, x):
+        assert isinstance(x, list)
+        map(cls.VALUE_DT.validateValue, x)
+
+    @classmethod
+    def validateBytes(cls, x):
+        assert isinstance(x, (PY_BYTES, Buffer))
+
+    @classmethod
+    def toBytes(cls, x):
+        cls.validateValue(x)
+        values = list(map(lambda x: cls.VALUE_DT.toBytes(x), x))
+        return cls.LENGTH_DT.toBytes(len(x)) + b"".join(values)
+
+    @classmethod
+    def fromBytes(cls, x):
+        cls.validateBytes(x)
+        if not isinstance(x, Buffer):
+            x = Buffer(x)
+        length = cls.LENGTH_DT.fromBytes(x)
+        values = []
+        for _ in range(length):
+            values.append(cls.VALUE_DT.fromBytes(x))
+        return values
+
+    @staticmethod
+    def new(value_dt, length_dt=uint32):
+        class __Vector(Vector):
+            LENGTH_DT: Type[Int] = length_dt
+            VALUE_DT: Type[DataType] = value_dt
+
+        return __Vector
+
 
 class Struct:
     def __init__(self, dataTypes):
@@ -157,7 +217,7 @@ class Struct:
     def validateValue(self, x):
         assert len(x) == len(
             self.dataTypes
-        ), "Length of values and length of datatypes is not same"
+        ), f"Length of values({len(x)}) and length({len(self.dataTypes)}) of datatypes is not same"
 
     def toBytes(self, x):
         self.validateValue(x)
@@ -175,7 +235,11 @@ class Struct:
 
 
 if __name__ == "__main__":
-    x = [uint32, uint16, uint8, Sequence]
+    x = [uint32, uint16, uint8, Sequence, Vector.new(Sequence.new(uint8))]
     s = Struct(x)
-    print(s.toBytes([16, 16, 16, b"123"]))
-    print(s.fromBytes(s.toBytes([8, 8, 8, b"123"])))
+    values = [16, 16, 16, b"123", [b"Test", b"123", b"::::))))"]]
+    print(values)
+    b = s.toBytes(values)
+    print(b)
+    _values = s.fromBytes(b)
+    print(_values)
