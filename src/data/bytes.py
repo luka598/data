@@ -9,6 +9,16 @@ PY_BYTES = bytes
 bytes = UNDEFINED
 
 
+def checkInstance(x, instance):
+    if not isinstance(x, instance):
+        raise TypeError(f"Expected {instance} but got {type(x)}")
+
+
+def checkSubclass(x, subclass):
+    if not issubclass(x, subclass):
+        raise TypeError(f"Expected {subclass} but got {type(x)}")
+
+
 class Buffer:
     def __init__(self, value) -> None:
         self.buffer = value
@@ -68,6 +78,7 @@ class Int(DataType):
 
     @classmethod
     def validateValue(cls, x):
+        checkInstance(x, PY_INT)
         if cls.SIGNED:
             assert x < cls.max() or x > cls.min(), "Signed integer overflow"
         else:
@@ -78,7 +89,7 @@ class Int(DataType):
 
     @classmethod
     def validateBytes(cls, x):
-        assert isinstance(x, (PY_BYTES, Buffer))
+        checkInstance(x, (PY_BYTES, Buffer))
 
     @classmethod
     def toBytes(cls, x):
@@ -134,11 +145,11 @@ class Sequence(DataType):
 
     @classmethod
     def validateValue(cls, x):
-        assert isinstance(x, PY_BYTES)
+        checkInstance(x, PY_BYTES)
 
     @classmethod
     def validateBytes(cls, x):
-        assert isinstance(x, (PY_BYTES, Buffer))
+        checkInstance(x, (PY_BYTES, Buffer))
 
     @classmethod
     def toBytes(cls, x):
@@ -167,12 +178,12 @@ class Vector(DataType):
 
     @classmethod
     def validateValue(cls, x):
-        assert isinstance(x, list)
+        checkInstance(x, list)
         map(cls.VALUE_DT.validateValue, x)
 
     @classmethod
     def validateBytes(cls, x):
-        assert isinstance(x, (PY_BYTES, Buffer))
+        checkInstance(x, (PY_BYTES, Buffer))
 
     @classmethod
     def toBytes(cls, x):
@@ -207,12 +218,9 @@ class Struct:
 
     @staticmethod
     def validateDataTypes(dataTypes):
-        assert isinstance(dataTypes, list), "dataTypes must be a list"
-        for dt in dataTypes:
-            assert isinstance(dt, type), "Datatype must be a class"
-            assert issubclass(
-                dt, DataType
-            ), f"Invalid datatype provided, {dt.__name__} is not a subclass of DataType"
+        checkInstance(dataTypes, list)
+        map(lambda x: checkInstance(x, type), dataTypes)
+        map(lambda x: checkSubclass(x, DataType), dataTypes)
 
     def validateValue(self, x):
         assert len(x) == len(
